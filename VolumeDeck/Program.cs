@@ -1,5 +1,4 @@
 ﻿using NAudio.CoreAudioApi;
-using NAudio.CoreAudioApi.Interfaces;
 using System.Data;
 using System.Diagnostics;
 using System.IO.Ports;
@@ -18,6 +17,9 @@ class Program
 
     static SerialPort? _port;
     static Timer? _refreshTimer;
+
+    static HashSet<string> ProcessesUsingLastSessionOnly = ["Discord"];
+    static HashSet<string> ExcludedSessions = ["steam"];
 
     static void Main()
     {
@@ -103,6 +105,7 @@ class Program
             }
         }
     }
+
     static int CircularNavigationByStep(int currentIndex, int step, int count)
     {
         if (count <= 0)
@@ -115,7 +118,6 @@ class Program
 
         return result;
     }
-
 
     static void RefreshSessions(bool print)
     {
@@ -189,28 +191,41 @@ class Program
 
         var mgr = device.AudioSessionManager;
         var sc = mgr.Sessions;
-        var list = new List<SessionItem>();
+        var sessions = new List<SessionItem>();
 
         for (int i = 0; i < sc.Count; i++)
         {
             var session = sc[i];
 
-            if (session.State != AudioSessionState.AudioSessionStateActive)
-                continue;
-
             string name = GetNiceName(session);
 
-            var vol = session.SimpleAudioVolume.Volume;
+            if (ExcludedSessions.Contains(name) || session.IsSystemSoundsSession)
+                continue;
 
-            list.Add(new SessionItem
+            var vol = session.SimpleAudioVolume.Volume;
+            var existingUniqueProcess = sessions.FirstOrDefault(s => s.DisplayName == name);
+            
+            if (existingUniqueProcess != null && ProcessesUsingLastSessionOnly.Contains(existingUniqueProcess.DisplayName))
             {
-                DisplayName = name,
-                SimpleAudioVolume = session.SimpleAudioVolume,
-                Volume = vol
-            });
+                // Replace existing session with the latest matching process name
+                existingUniqueProcess = new SessionItem
+                {
+                    DisplayName = name,
+                    SimpleAudioVolume = session.SimpleAudioVolume,
+                    Volume = vol
+                };
+            } else
+            {
+                sessions.Add(new SessionItem
+                {
+                    DisplayName = name,
+                    SimpleAudioVolume = session.SimpleAudioVolume,
+                    Volume = vol
+                });
+            }
         }
 
-        return list.OrderBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
+        return sessions.OrderBy(s => s.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     static string GetNiceName(AudioSessionControl session)
