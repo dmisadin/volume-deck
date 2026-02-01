@@ -4,9 +4,11 @@ using System.Diagnostics;
 using System.IO.Ports;
 using VolumeDeck.Models;
 using VolumeDeck.Models.Enums;
+using VolumeDeck.Serial;
 
 class Program
 {
+    const string HandshakeKey = "VOLUME_KNOB_READY";
     static string PortName = "COM4";
     static int BaudRate = 9600;
     static float VolumeStep = 0.02f;
@@ -23,15 +25,26 @@ class Program
 
     static void Main()
     {
-        Console.WriteLine("Per-App Volume (Buttons)");
-        Console.WriteLine("D2 Prev | D3 Next | D4 Vol- | D5 Vol+");
-        Console.WriteLine();
+        var discovery = new SerialPortFinder(baudRate: 9600);
 
-        RefreshSessions(print: true);
+        discovery.OnLog += Console.WriteLine;
+        discovery.OnConnected += port =>
+        {
+            Console.WriteLine($"READY: Arduino found on {port}");
+            // Next step: open a persistent SerialPort here and start reading BTN commands
+            StartSerialListening(port);
+        };
 
-        _refreshTimer = new Timer(_ => RefreshSessions(print: false), null, 2000, 2000);
+        discovery.Start();
 
-        _port = new SerialPort(PortName, BaudRate)
+        Console.WriteLine("Scanning for Arduino... Press ENTER to quit.");
+        Console.ReadLine();
+        discovery.Dispose();
+    }
+
+    static void StartSerialListening(string port)
+    {
+        _port = new SerialPort(port, BaudRate)
         {
             NewLine = "\n",
             ReadTimeout = 500
@@ -50,7 +63,7 @@ class Program
         try
         {
             _port.Open();
-            Console.WriteLine($"Listening on {PortName} @ {BaudRate} baud");
+            Console.WriteLine($"Listening on {port} @ {BaudRate} baud");
         }
         catch (Exception ex)
         {
@@ -59,6 +72,11 @@ class Program
             Console.WriteLine("Tip: Close Arduino Serial Monitor/Plotter (only one app can use the COM port).");
             return;
         }
+
+
+        RefreshSessions(print: true);
+
+        _refreshTimer = new Timer(_ => RefreshSessions(print: false), null, 2000, 2000);
 
         Console.WriteLine("Press ENTER to quit.");
         Console.ReadLine();
