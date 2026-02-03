@@ -1,25 +1,17 @@
 ﻿using System.IO.Ports;
 
-namespace VolumeDeck.Serial;
+namespace VolumeDeck.Services.Serial;
 
 public class SerialPortFinder : IDisposable
 {
     private readonly object _lock = new();
 
-    private readonly int _baudRate;
-    private readonly TimeSpan _scanInterval;
-    private readonly TimeSpan _handshakeTimeout;
-
-    private Timer? _timer;
+    private readonly int BaudRate;
+    private readonly TimeSpan ScanInterval;
+    private readonly TimeSpan HandshakeTimeout;
 
     // Keep track of ports we already tried recently to avoid hammering the same dead port.
-    private readonly Dictionary<string, DateTime> _nextAllowedAttemptUtc = new();
-
-    public string? ConnectedPortName { get; private set; }
-
-    public event Action<string>? OnConnected;
-    public event Action<string>? OnLog;
-
+    private readonly Dictionary<string, DateTime> NextAllowedAttemptUtc = new();
     private const string HandshakeKey = "VOLUME_KNOB_READY";
     private const string HandshakeQuestion = "VOLUME_KNOB_REQUEST";
 
@@ -28,34 +20,16 @@ public class SerialPortFinder : IDisposable
         TimeSpan? scanInterval = null,
         TimeSpan? handshakeTimeout = null)
     {
-        _baudRate = baudRate;
-        _scanInterval = scanInterval ?? TimeSpan.FromSeconds(1);
-        _handshakeTimeout = handshakeTimeout ?? TimeSpan.FromMilliseconds(600);
+        this.BaudRate = baudRate;
+        this.ScanInterval = scanInterval ?? TimeSpan.FromSeconds(1);
+        this.HandshakeTimeout = handshakeTimeout ?? TimeSpan.FromMilliseconds(600);
     }
 
-    public void Start()
+    public async Task<string> FindSerialPortNameAsync(CancellationToken ct)
     {
-        _timer = new Timer(_ => ScanOnce(), null, TimeSpan.Zero, _scanInterval);
-    }
-
-    public void Dispose()
-    {
-        _timer?.Dispose();
-    }
-
-    private void ScanOnce()
-    {
-        try
+        while (!ct.IsCancellationRequested)
         {
-            // Already connected? Optionally you can verify it's still present.
-            // For now: if connected and still exists, do nothing.
             var ports = SerialPort.GetPortNames().OrderBy(p => p).ToArray();
-
-            lock (_lock)
-            {
-                if (ConnectedPortName != null && ports.Contains(ConnectedPortName, StringComparer.OrdinalIgnoreCase))
-                    return;
-            }
 
             foreach (var port in ports)
             {
@@ -64,35 +38,33 @@ public class SerialPortFinder : IDisposable
 
                 if (TryHandshake(port, out var response))
                 {
-                    lock (_lock)
-                    {
-                        ConnectedPortName = port;
-                    }
-
-                    OnLog?.Invoke($"Connected to {port} ({response})");
-                    OnConnected?.Invoke(port);
-                    return;
+                    return port;   // found it
                 }
             }
+
+            await Task.Delay(this.ScanInterval, ct); // wait 1 second
         }
-        catch (Exception ex)
-        {
-            OnLog?.Invoke($"[ScanOnce] {ex.Message}");
-        }
+
+        throw new OperationCanceledException(ct);
+    }
+
+
+    public void Dispose()
+    {
     }
 
     private bool ShouldAttempt(string port)
     {
         lock (_lock)
         {
-            if (_nextAllowedAttemptUtc.TryGetValue(port, out var nextUtc))
+            if (this.NextAllowedAttemptUtc.TryGetValue(port, out var nextUtc))
             {
                 if (DateTime.UtcNow < nextUtc)
                     return false;
             }
 
             // Attempt now; if fails, back off for a bit
-            _nextAllowedAttemptUtc[port] = DateTime.UtcNow.AddSeconds(2);
+            this.NextAllowedAttemptUtc[port] = DateTime.UtcNow.AddSeconds(2);
             return true;
         }
     }
@@ -103,7 +75,7 @@ public class SerialPortFinder : IDisposable
 
         try
         {
-            using var sp = new SerialPort(portName, _baudRate)
+            using var sp = new SerialPort(portName, this.BaudRate)
             {
                 NewLine = "\n",
                 ReadTimeout = 150,
@@ -124,7 +96,7 @@ public class SerialPortFinder : IDisposable
             sp.WriteLine(HandshakeQuestion);
 
             // Read until timeout window expires
-            var deadline = DateTime.UtcNow + _handshakeTimeout;
+            var deadline = DateTime.UtcNow + this.HandshakeTimeout;
             while (DateTime.UtcNow < deadline)
             {
                 try
@@ -146,12 +118,12 @@ public class SerialPortFinder : IDisposable
         }
         catch (UnauthorizedAccessException)
         {
-            OnLog?.Invoke($"[Handshake] {portName} access denied (busy).");
+            Console.WriteLine($"[Handshake] {portName} access denied (busy).");
             return false;
         }
         catch (Exception ex)
         {
-            OnLog?.Invoke($"[Handshake] {portName} failed: {ex.Message}");
+            Console.WriteLine($"[Handshake] {portName} failed: {ex.Message}");
             return false;
         }
     }
