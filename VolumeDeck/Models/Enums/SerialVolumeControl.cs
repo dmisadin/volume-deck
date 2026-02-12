@@ -5,6 +5,7 @@
         PreviousSession = 2,
         NextSession = 3,
         VolumeDown = 4,
-        VolumeUp = 5
+        VolumeUp = 5,
+        MuteToggle = 6
     }
 }

@@ -38,6 +38,10 @@ public class InputHandler
             case SerialVolumeControl.VolumeUp:
                 this.sessionVolumeController.AdjustSelectedVolume(+VolumeStep);
                 break;
+
+            case SerialVolumeControl.MuteToggle:
+                this.sessionVolumeController.ToggleMuteSession();
+                break;
         }
     }
 }

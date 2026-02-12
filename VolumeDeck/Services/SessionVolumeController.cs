@@ -134,6 +134,14 @@ public class SessionVolumeController
         Console.WriteLine($"> {s.DisplayName} volume -> {Math.Round(newVol * 100)}%");
     }
 
+    public void ToggleMuteSession()
+    {
+        if (this.Sessions.Count == 0) return;
+
+        var s = this.Sessions[this.SelectedIndex];
+
+        s.SimpleAudioVolume.Mute = !s.SimpleAudioVolume.Mute;
+    }
 
     private string GetNiceName(AudioSessionControl session)
     {
