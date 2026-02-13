@@ -17,6 +17,25 @@ public sealed class SerialWorker : BackgroundService
     {
         logger.LogInformation("SerialWorker starting...");
 
-        await serialConnection.FindSerialPortAndStartListeningAsync(stoppingToken);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (await serialConnection.IsSerialConnectionOpen())
+                    await serialConnection.SendPing();
+                else 
+                    await serialConnection.Reconnect(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Serial connection check failed.");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+        }
     }
 }

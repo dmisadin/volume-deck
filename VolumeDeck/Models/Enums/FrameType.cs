@@ -2,6 +2,8 @@
 
 public enum FrameType : byte
 {
-    UpdateTopText = 1,
-    UpdateBottomText = 2,
+    Ping = 0,
+    Pong = 1,
+    UpdateTopText = 2,
+    UpdateBottomText = 3,
 }

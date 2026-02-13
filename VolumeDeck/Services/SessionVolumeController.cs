@@ -237,7 +237,7 @@ public class SessionVolumeController : BackgroundService
         return result;
     }
 
-    private void UpdateOLEDDisplay()
+    private async void UpdateOLEDDisplay()
     {
         if (this.Sessions.Count == 0) return;
 
@@ -253,8 +253,8 @@ public class SessionVolumeController : BackgroundService
         else
             bottomText = $"{Math.Round(session.Volume * 100)}%".Truncate(24, "");
 
-        this.serialConnection.SendFrame(FrameType.UpdateTopText, topText);
-        this.serialConnection.SendFrame(FrameType.UpdateBottomText, bottomText);
+        await this.serialConnection.SendFrame(FrameType.UpdateTopText, topText);
+        await this.serialConnection.SendFrame(FrameType.UpdateBottomText, bottomText);
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)

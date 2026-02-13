@@ -38,11 +38,11 @@ public class SerialPortFinder : IDisposable
 
                 if (TryHandshake(port, out var response))
                 {
-                    return port;   // found it
+                    return port;
                 }
             }
 
-            await Task.Delay(this.ScanInterval, ct); // wait 1 second
+            await Task.Delay(this.ScanInterval, ct);
         }
 
         throw new OperationCanceledException(ct);

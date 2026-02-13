@@ -12,9 +12,13 @@ public class SerialConnection
     private const byte SOF = 0xAA;
 
     private SerialPort? Port;
-    private readonly object lockObj = new();
+    private readonly SemaphoreSlim ConnectLock = new(1, 1);
+    private DateTime LastPongReceived = DateTime.MinValue;
 
     public event Action<string>? SerialLineReceived;
+
+    public bool IsConnected => this.Port != null && this.Port.IsOpen;
+
 
     public SerialConnection(SerialPortFinder serialPortFinder)
     {
@@ -41,6 +45,8 @@ public class SerialConnection
             try
             {
                 string line = this.Port!.ReadLine().Trim();
+                Console.WriteLine("Serial.DataRecevied: " + line);
+                this.LastPongReceived = DateTime.UtcNow;
                 SerialLineReceived?.Invoke(line);
             }
             catch { }
@@ -49,6 +55,7 @@ public class SerialConnection
         try
         {
             this.Port.Open();
+            this.LastPongReceived = DateTime.UtcNow;
             Console.WriteLine($"Listening on {port} @ {BaudRate} baud");
         }
         catch (Exception ex)
@@ -58,15 +65,12 @@ public class SerialConnection
             Console.WriteLine("Tip: Close Arduino Serial Monitor/Plotter (only one app can use the COM port).");
             return;
         }
-
-        // this.Port.Close();
     }
 
     // [SOF][TYPE][LENGTH][STRING]
-    public void SendFrame(FrameType type, string payload)
+    public async Task SendFrame(FrameType type, string payload)
     {
-        if (this.Port == null || !this.Port.IsOpen)
-            throw new NullReferenceException("Serial Port is not open.");
+        await this.IsSerialConnectionOpen();
 
         byte[] data = Encoding.UTF8.GetBytes(payload ?? "");
 
@@ -79,6 +83,63 @@ public class SerialConnection
         frame[2] = (byte)data.Length;
         Array.Copy(data, 0, frame, 3, data.Length);
 
-        this.Port.Write(frame, 0, frame.Length);
+        this.Port?.Write(frame, 0, frame.Length);
     }
+
+    public async Task<bool> IsSerialConnectionOpen()
+    {
+        var age = DateTime.UtcNow - LastPongReceived;
+
+        if (this.Port != null 
+            && this.Port.IsOpen 
+            && LastPongReceived != DateTime.MinValue 
+            && age < TimeSpan.FromSeconds(15))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    public async Task Reconnect(CancellationToken ct)
+    {
+        await this.ConnectLock.WaitAsync(ct);
+
+        try
+        {
+            this.Close();
+
+            await FindSerialPortAndStartListeningAsync(ct);
+
+            if (this.Port == null || !this.Port.IsOpen)
+                throw new InvalidOperationException("Serial port could not be opened.");
+        }
+        catch
+        {
+        }
+        finally
+        {
+            this.ConnectLock.Release();
+        }
+    }
+
+    public async Task SendPing()
+    {
+        await this.SendFrame(FrameType.Ping, "");
+    }
+
+    public void Close()
+    {
+        try
+        {
+            if (Port?.IsOpen == true)
+                Port.Close();
+        }
+        catch { }
+        finally
+        {
+            this.LastPongReceived = DateTime.MinValue;
+        }
+    }
+
 }

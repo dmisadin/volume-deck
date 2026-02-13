@@ -81,15 +81,6 @@ bool HandleHandshakeRequest()
   return false;
 }
 
-void setupOLED() {
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;);
-  }
-  display.clearDisplay(); 
-  analogReference(INTERNAL);
-}
-
 // Protocol: [0xAA][TYPE][LENGTH][STRING...]
 static const uint8_t SOF = 0xAA;
 
@@ -101,8 +92,10 @@ enum RxState : byte {
 };
 
 enum FrameType : byte {
-  UpdateTopText = 1,
-  UpdateBottomText = 2,
+  Ping = 0,
+  Pong = 1,
+  UpdateTopText = 2,
+  UpdateBottomText = 3
 };
 
 void handleMessage(FrameType type, const char* s);
@@ -116,6 +109,20 @@ uint8_t msgLen = 0;
 uint8_t idx = 0;
 
 char buf[32];
+char topText[24] = "";
+char bottomText[6] = "";
+
+void setupOLED() {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;);
+  }
+  display.clearDisplay(); 
+  analogReference(INTERNAL);
+
+  updateTopText("Volume Deck v1.0");
+  updateBottomText("Hi!");
+}
 
 void UpdateOLED() {
   while (Serial.available() > 0) {
@@ -163,13 +170,14 @@ void UpdateOLED() {
   }
 }
 
-char topText[24] = "";
-char bottomText[6] = "";
-
 void handleMessage(FrameType type, const char* s)
 {
   switch (type)
   {
+    case FrameType::Ping:
+      Serial.println(FrameType::Pong);
+      return;
+
     case FrameType::UpdateTopText:
       strncpy(topText, s, sizeof(topText) - 1);
       topText[sizeof(topText) - 1] = '\0';
