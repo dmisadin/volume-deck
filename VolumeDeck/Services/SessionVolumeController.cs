@@ -1,13 +1,19 @@
+﻿using Microsoft.Extensions.Hosting;
 ﻿using NAudio.CoreAudioApi;
 using System.Diagnostics;
 using VolumeDeck.Models;
+using VolumeDeck.Models.Enums;
+using VolumeDeck.Services.Serial;
+using VolumeDeck.Utilities;
 
 namespace VolumeDeck.Services;
 
-public class SessionVolumeController
+public class SessionVolumeController : BackgroundService
 {
+    private readonly SerialConnection serialConnection;
 
     private readonly object lockObj = new();
+    private readonly float VolumeStep = 0.02f;
     private List<SessionItem> Sessions = new();
     private int SelectedIndex = 0;
     private Timer? RefreshTimer;
@@ -15,8 +21,11 @@ public class SessionVolumeController
     private HashSet<string> ProcessesUsingLastSessionOnly = ["Discord"];
     private HashSet<string> ExcludedSessions = ["steam", "steamwebhelper"];
 
-    public SessionVolumeController()
+    public SessionVolumeController(SerialConnection serialConnection)
     {
+        this.serialConnection = serialConnection;
+        this.serialConnection.SerialLineReceived += HandleSerialLine;
+
         this.RefreshTimer = new Timer(_ => RefreshSessions(print: false), null, 2000, 2000);
     }
 
@@ -46,6 +55,41 @@ public class SessionVolumeController
         catch (Exception ex)
         {
             Console.WriteLine($"[RefreshSessions error] {ex.Message}");
+        }
+    }
+
+    private void HandleSerialLine(string line)
+    {
+        if (!int.TryParse(line, out int pin))
+            return;
+
+        if (!Enum.IsDefined(typeof(SerialVolumeControl), pin))
+            return;
+
+        switch ((SerialVolumeControl)pin)
+        {
+            case SerialVolumeControl.PreviousSession:
+                this.SessionNavigationByStep(-1);
+                break;
+
+            case SerialVolumeControl.NextSession:
+                this.SessionNavigationByStep(1);
+                break;
+
+            case SerialVolumeControl.VolumeDown:
+                this.AdjustSelectedVolume(-VolumeStep);
+                break;
+
+            case SerialVolumeControl.VolumeUp:
+                this.AdjustSelectedVolume(+VolumeStep);
+                break;
+
+            case SerialVolumeControl.MuteToggle:
+                this.ToggleMuteSession();
+                break;
+
+            default:
+                return;
         }
     }
 
@@ -120,7 +164,7 @@ public class SessionVolumeController
         Console.WriteLine($"> Selected: {s.DisplayName} | Vol {Math.Round(s.Volume * 100)}%");
     }
 
-    public void AdjustSelectedVolume(float delta)
+    private void AdjustSelectedVolume(float delta)
     {
         if (this.Sessions.Count == 0) return;
 
@@ -134,7 +178,7 @@ public class SessionVolumeController
         Console.WriteLine($"> {s.DisplayName} volume -> {Math.Round(newVol * 100)}%");
     }
 
-    public void ToggleMuteSession()
+    private void ToggleMuteSession()
     {
         if (this.Sessions.Count == 0) return;
 
@@ -163,7 +207,7 @@ public class SessionVolumeController
         return "Unknown Session";
     }
 
-    public void SessionNavigationByStep(int step)
+    private void SessionNavigationByStep(int step)
     {
         lock (lockObj)
         {
@@ -184,5 +228,10 @@ public class SessionVolumeController
             result += count;
 
         return result;
+    }
+
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        return Task.Delay(Timeout.Infinite, stoppingToken);
     }
 }

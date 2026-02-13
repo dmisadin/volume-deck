@@ -4,7 +4,6 @@ namespace VolumeDeck.Services.Serial;
 
 public class SerialConnection
 {
-    private readonly InputHandler inputHandler;
     private readonly SerialPortFinder serialPortFinder;
 
     private const int BaudRate = 9600;
@@ -12,10 +11,10 @@ public class SerialConnection
     private SerialPort? Port;
     private readonly object lockObj = new();
 
-    public SerialConnection(InputHandler inputHandler, 
-                            SerialPortFinder serialPortFinder)
+    public event Action<string>? SerialLineReceived;
+
+    public SerialConnection(SerialPortFinder serialPortFinder)
     {
-        this.inputHandler = inputHandler;
         this.serialPortFinder = serialPortFinder;
     }
 
