@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Hosting;
-﻿using NAudio.CoreAudioApi;
+using NAudio.CoreAudioApi;
 using System.Diagnostics;
 using VolumeDeck.Models;
 using VolumeDeck.Models.Enums;
@@ -91,6 +91,8 @@ public class SessionVolumeController : BackgroundService
             default:
                 return;
         }
+
+        this.UpdateOLEDDisplay();
     }
 
     private void PrintAll()
@@ -127,6 +129,7 @@ public class SessionVolumeController : BackgroundService
                 continue;
 
             var vol = session.SimpleAudioVolume.Volume;
+            var isMuted = session.SimpleAudioVolume.Mute;
             var existingUniqueProcess = sessions.FirstOrDefault(s => s.DisplayName == name);
 
             if (existingUniqueProcess != null && ProcessesUsingLastSessionOnly.Contains(existingUniqueProcess.DisplayName))
@@ -136,7 +139,8 @@ public class SessionVolumeController : BackgroundService
                 {
                     DisplayName = name,
                     SimpleAudioVolume = session.SimpleAudioVolume,
-                    Volume = vol
+                    Volume = vol,
+                    IsMuted = isMuted
                 };
             }
             else
@@ -145,7 +149,8 @@ public class SessionVolumeController : BackgroundService
                 {
                     DisplayName = name,
                     SimpleAudioVolume = session.SimpleAudioVolume,
-                    Volume = vol
+                    Volume = vol,
+                    IsMuted = isMuted
                 });
             }
         }
@@ -172,8 +177,10 @@ public class SessionVolumeController : BackgroundService
 
         float newVol = Math.Clamp(s.SimpleAudioVolume.Volume + delta, 0f, 1f);
         s.SimpleAudioVolume.Volume = newVol;
+        s.SimpleAudioVolume.Mute = false;
 
         s.Volume = newVol;
+        s.IsMuted = s.SimpleAudioVolume.Mute;
 
         Console.WriteLine($"> {s.DisplayName} volume -> {Math.Round(newVol * 100)}%");
     }
@@ -228,6 +235,26 @@ public class SessionVolumeController : BackgroundService
             result += count;
 
         return result;
+    }
+
+    private void UpdateOLEDDisplay()
+    {
+        if (this.Sessions.Count == 0) return;
+
+        var session = this.Sessions.ElementAtOrDefault(this.SelectedIndex);
+
+        if (session == null) return;
+
+        string topText = session.DisplayName.Truncate(24, "");
+        string bottomText = "";
+
+        if (session.SimpleAudioVolume.Mute)
+            bottomText = "Muted";
+        else
+            bottomText = $"{Math.Round(session.Volume * 100)}%".Truncate(24, "");
+
+        this.serialConnection.SendFrame(FrameType.UpdateTopText, topText);
+        this.serialConnection.SendFrame(FrameType.UpdateBottomText, bottomText);
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)

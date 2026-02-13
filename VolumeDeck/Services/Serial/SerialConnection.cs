@@ -1,4 +1,6 @@
 ﻿using System.IO.Ports;
+using System.Text;
+using VolumeDeck.Models.Enums;
 
 namespace VolumeDeck.Services.Serial;
 
@@ -7,6 +9,7 @@ public class SerialConnection
     private readonly SerialPortFinder serialPortFinder;
 
     private const int BaudRate = 9600;
+    private const byte SOF = 0xAA;
 
     private SerialPort? Port;
     private readonly object lockObj = new();
@@ -38,7 +41,7 @@ public class SerialConnection
             try
             {
                 string line = this.Port!.ReadLine().Trim();
-                this.inputHandler.HandleSerialLine(line);
+                SerialLineReceived?.Invoke(line);
             }
             catch { }
         };
@@ -57,5 +60,25 @@ public class SerialConnection
         }
 
         // this.Port.Close();
+    }
+
+    // [SOF][TYPE][LENGTH][STRING]
+    public void SendFrame(FrameType type, string payload)
+    {
+        if (this.Port == null || !this.Port.IsOpen)
+            throw new NullReferenceException("Serial Port is not open.");
+
+        byte[] data = Encoding.UTF8.GetBytes(payload ?? "");
+
+        if (data.Length > 62)
+            throw new ArgumentOutOfRangeException(nameof(payload), "Payload too long (max 62 bytes).");
+
+        byte[] frame = new byte[3 + data.Length];
+        frame[0] = SOF;
+        frame[1] = (byte)type;
+        frame[2] = (byte)data.Length;
+        Array.Copy(data, 0, frame, 3, data.Length);
+
+        this.Port.Write(frame, 0, frame.Length);
     }
 }

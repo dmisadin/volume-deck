@@ -7,5 +7,6 @@ namespace VolumeDeck.Models
         public string DisplayName = "";
         public SimpleAudioVolume SimpleAudioVolume = null!;
         public float Volume;
+        public bool IsMuted;
     }
 }
