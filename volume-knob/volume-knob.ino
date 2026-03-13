@@ -117,9 +117,9 @@ void setupOLED() {
     Serial.println(F("SSD1306 allocation failed"));
     for(;;);
   }
+  display.setRotation(2);
   display.clearDisplay(); 
-  analogReference(INTERNAL);
-
+  
   updateTopText("Volume Deck v1.0");
   updateBottomText("Hi!");
 }
