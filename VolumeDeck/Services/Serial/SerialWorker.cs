@@ -9,18 +9,26 @@ public sealed class SerialWorker : BackgroundService
 
     public SerialWorker(SerialConnection serialConnection, ILogger<SerialWorker> logger)
     {
-        this.serialConnection = serialConnection;
-        this.logger = logger;
+        this.serialConnection = serialConnection ?? throw new ArgumentNullException(nameof(serialConnection));
+        this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("SerialWorker starting...");
+        logger.LogInformation("SerialWorker starting.");
+
+        stoppingToken.Register(() =>
+        {
+            logger.LogInformation("SerialWorker stopping, disposing SerialConnection...");
+            serialConnection.DisposeAsync().AsTask().Wait();
+        });
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                logger.LogInformation("Checking serial connection.");
+
                 if (await serialConnection.IsSerialConnectionOpen())
                     await serialConnection.SendPing();
                 else 
@@ -28,6 +36,7 @@ public sealed class SerialWorker : BackgroundService
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
+                logger.LogError("Operation canceled.");
                 break;
             }
             catch (Exception ex)

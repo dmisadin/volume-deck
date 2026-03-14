@@ -1,12 +1,14 @@
-﻿using System.IO.Ports;
+﻿using NAudio.CoreAudioApi;
+using System.IO.Ports;
 using System.Text;
 using VolumeDeck.Models.Enums;
 
 namespace VolumeDeck.Services.Serial;
 
-public class SerialConnection
+public class SerialConnection : IAsyncDisposable
 {
     private readonly SerialPortFinder serialPortFinder;
+    private readonly ILogger<SerialConnection> logger;
 
     private const int BaudRate = 9600;
     private const byte SOF = 0xAA;
@@ -20,9 +22,11 @@ public class SerialConnection
     public bool IsConnected => this.Port != null && this.Port.IsOpen;
 
 
-    public SerialConnection(SerialPortFinder serialPortFinder)
+    public SerialConnection(SerialPortFinder serialPortFinder,
+							ILogger<SerialConnection> logger)
     {
         this.serialPortFinder = serialPortFinder;
+        this.logger = logger;
     }
 
     public async Task FindSerialPortAndStartListeningAsync(CancellationToken cancellationToken)
@@ -45,7 +49,7 @@ public class SerialConnection
             try
             {
                 string line = this.Port!.ReadLine().Trim();
-                Console.WriteLine("Serial.DataRecevied: " + line);
+                logger.LogInformation("Serial.DataRecevied: " + line);
                 this.LastPongReceived = DateTime.UtcNow;
                 SerialLineReceived?.Invoke(line);
             }
@@ -56,13 +60,13 @@ public class SerialConnection
         {
             this.Port.Open();
             this.LastPongReceived = DateTime.UtcNow;
-            Console.WriteLine($"Listening on {port} @ {BaudRate} baud");
-        }
-        catch (Exception ex)
+            logger.LogInformation($"Listening on {port} @ {BaudRate} baud");
+		}
+		catch (Exception ex)
         {
-            Console.WriteLine("Failed to open port:");
-            Console.WriteLine(ex.Message);
-            Console.WriteLine("Tip: Close Arduino Serial Monitor/Plotter (only one app can use the COM port).");
+            logger.LogError("Failed to open port:");
+			logger.LogError(ex.Message);
+			logger.LogError("Tip: Close Arduino Serial Monitor/Plotter (only one app can use the COM port).");
             return;
         }
     }
@@ -132,8 +136,7 @@ public class SerialConnection
     {
         try
         {
-            if (Port?.IsOpen == true)
-                Port.Close();
+            DisposePort();
         }
         catch { }
         finally
@@ -141,5 +144,20 @@ public class SerialConnection
             this.LastPongReceived = DateTime.MinValue;
         }
     }
+    private void DisposePort()
+    {
+        if (Port != null)
+        {
+            if (Port.IsOpen)
+                Port.Close();
+            Port.Dispose();
+            Port = null;
+        }
+    }
 
+    public async ValueTask DisposeAsync()
+    {
+        DisposePort();
+        await Task.CompletedTask;
+    }
 }

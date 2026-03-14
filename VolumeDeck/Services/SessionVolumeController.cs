@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using NAudio.CoreAudioApi;
 using System.Diagnostics;
 using VolumeDeck.Models;
@@ -11,8 +12,9 @@ namespace VolumeDeck.Services;
 public class SessionVolumeController : BackgroundService
 {
     private readonly SerialConnection serialConnection;
+	private readonly ILogger<SessionVolumeController> logger;
 
-    private readonly object lockObj = new();
+	private readonly object lockObj = new();
     private readonly float VolumeStep = 0.02f;
     private List<SessionItem> Sessions = new();
     private int SelectedIndex = 0;
@@ -21,9 +23,11 @@ public class SessionVolumeController : BackgroundService
     private HashSet<string> ProcessesUsingLastSessionOnly = ["Discord"];
     private HashSet<string> ExcludedSessions = ["steam", "steamwebhelper"];
 
-    public SessionVolumeController(SerialConnection serialConnection)
+    public SessionVolumeController(SerialConnection serialConnection,
+                                ILogger<SessionVolumeController> logger)
     {
         this.serialConnection = serialConnection;
+        this.logger = logger;
         this.serialConnection.SerialLineReceived += HandleSerialLine;
 
         this.RefreshTimer = new Timer(_ => RefreshSessions(print: false), null, 2000, 2000);
@@ -54,7 +58,7 @@ public class SessionVolumeController : BackgroundService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[RefreshSessions error] {ex.Message}");
+            logger.LogError($"[RefreshSessions error] {ex.Message}");
         }
     }
 
@@ -99,14 +103,12 @@ public class SessionVolumeController : BackgroundService
     {
         lock (lockObj)
         {
-            Console.WriteLine();
-            Console.WriteLine($"Active sessions: {this.Sessions.Count}");
+            logger.LogInformation($"Active sessions: {this.Sessions.Count}");
             for (int i = 0; i < this.Sessions.Count; i++)
             {
                 var s = this.Sessions[i];
-                Console.WriteLine($"{(i == this.SelectedIndex ? ">" : " ")} [{i}] {s.DisplayName}  (Vol {Math.Round(s.Volume * 100)}%)");
+				logger.LogInformation($"{(i == this.SelectedIndex ? ">" : " ")} [{i}] {s.DisplayName}  (Vol {Math.Round(s.Volume * 100)}%)");
             }
-            Console.WriteLine();
         }
     }
 
@@ -166,7 +168,7 @@ public class SessionVolumeController : BackgroundService
 
         if (s == null) return;
 
-        Console.WriteLine($"> Selected: {s.DisplayName} | Vol {Math.Round(s.Volume * 100)}%");
+		logger.LogInformation($"> Selected: {s.DisplayName} | Vol {Math.Round(s.Volume * 100)}%");
     }
 
     private void AdjustSelectedVolume(float delta)
@@ -182,7 +184,7 @@ public class SessionVolumeController : BackgroundService
         s.Volume = newVol;
         s.IsMuted = s.SimpleAudioVolume.Mute;
 
-        Console.WriteLine($"> {s.DisplayName} volume -> {Math.Round(newVol * 100)}%");
+		logger.LogInformation($"> {s.DisplayName} volume -> {Math.Round(newVol * 100)}%");
     }
 
     private void ToggleMuteSession()

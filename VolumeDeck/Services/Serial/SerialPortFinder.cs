@@ -1,9 +1,12 @@
-﻿using System.IO.Ports;
+﻿using Microsoft.Extensions.Logging;
+using System.IO.Ports;
 
 namespace VolumeDeck.Services.Serial;
 
 public class SerialPortFinder : IDisposable
 {
+    private readonly ILogger<SerialPortFinder> logger;
+
     private readonly object _lock = new();
 
     private readonly int BaudRate;
@@ -15,11 +18,13 @@ public class SerialPortFinder : IDisposable
     private const string HandshakeKey = "VOLUME_KNOB_READY";
     private const string HandshakeQuestion = "VOLUME_KNOB_REQUEST";
 
-    public SerialPortFinder(
-        int baudRate = 9600,
+    public SerialPortFinder(ILogger<SerialPortFinder> logger,
+		int baudRate = 9600,
         TimeSpan? scanInterval = null,
         TimeSpan? handshakeTimeout = null)
     {
+        this.logger = logger;
+
         this.BaudRate = baudRate;
         this.ScanInterval = scanInterval ?? TimeSpan.FromSeconds(1);
         this.HandshakeTimeout = handshakeTimeout ?? TimeSpan.FromMilliseconds(600);
@@ -118,12 +123,12 @@ public class SerialPortFinder : IDisposable
         }
         catch (UnauthorizedAccessException)
         {
-            Console.WriteLine($"[Handshake] {portName} access denied (busy).");
+			logger.LogError($"[Handshake] {portName} access denied (busy).");
             return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Handshake] {portName} failed: {ex.Message}");
+			logger.LogError($"[Handshake] {portName} failed: {ex.Message}");
             return false;
         }
     }
